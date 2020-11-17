@@ -93,7 +93,7 @@ export default {
       if (this.projectLogo && this.projectImage && this.projectName && this.versionDate) {
         this.setImages(obj, '__x003c_LOGOPANEL_x003e_', this.projectLogo)
         this.setImages(obj, '__x003c_PROJECTIMAGEPANEL_x003e_', this.projectImage)
-        this.applyText()
+        this.applyText(obj)
       } else {
         alert('All fields are required')
       }
