@@ -1,58 +1,57 @@
 <template>
   <div class="form-container">
-    <!-- __x003c_PROJECTINFOPANEL_x003e_ -->
-
-    <!-- __x003c_LOGOPANEL_x003e_ -->
-    <!-- __x003c_PROJECTIMAGEPANEL_x003e_ -->
-    <!-- &lt;PROJECTNAME&gt; -->
-    <!-- &lt;VERSIONDATE&gt; -->
-    <div>
-      <label for="projectName">Project Name </label>
-      <input type="text" v-model="projectName" id="projectName">
+    <h1>Pro-UP</h1>
+    <hr />
+    <div class="inputs-container">
+      <div>
+        <label for="projectName">Project Name </label>
+        <input type="text" v-model="projectName" id="projectName">
+      </div>
+      <div>
+        <label for="versionDate"> Version Date </label>
+        <input type="date" v-model="versionDate" id="versionDate">
+      </div>
+      <div class="template-image">
+        <label for="projectImage"> Project Image <span>(click to Select)</span></label>
+        <input
+          type="file"
+          accept="image/*"
+          name="projectImage"
+          id="projectImage"
+          style="display: none"
+          @change="onProjectImageUpload"
+        >
+        <img :src="projectImage" width="80px" />
+      </div>
+      <div class="template-image">
+        <label for="projectLogo"> Logo <span>(click to Select)</span></label>
+        <input
+          type="file"
+          accept="image/*"
+          name="projectLogo"
+          id="projectLogo"
+          style="display: none"
+          @change="onProjectImageUpload"
+        >
+        <img :src="projectLogo" width="80px" />
+      </div>
     </div>
-    <div>
-      <label for="versionDate"> Version Date </label>
-      <input type="date" v-model="versionDate" id="versionDate">
-    </div>
-    <div>
-      <label for="projectImage"> Project Image </label>
-      <input
-        type="file"
-        accept="image/*"
-        name="projectImage"
-        id="projectImage"
-        @change="onProjectImageUpload"
-      >
-      <img :src="projectImage" width="300px" />
-    </div>
-    <div>
-      <label for="projectLogo"> Logo </label>
-      <input
-        type="file"
-        accept="image/*"
-        name="projectLogo"
-        id="projectLogo"
-        @change="onProjectImageUpload"
-      >
-      <img :src="projectLogo" width="300px" />
-    </div>
-    <!-- <div>
-      <button @click="applyTemplate">
-        Apply
-      </button>
-    </div> -->
-    <div >
-      <img v-for="image in templates" :key="image.key"
-        name="svg-images"
-        type="image/svg+xml"
-        :src="image.pathLong"
-        width="300px"
-        @click="clickImage(image.pathLong)"
-      />
+    <div class="templates">
+      <div class="templates__choices">
+        <img v-for="image in templates" :key="image.key"
+          name="svg-images"
+          type="image/svg+xml"
+          :src="image.pathLong"
+          width="300px"
+          @click="clickImage(image.pathLong)"
+        />
+      </div>
+      <div class="templates__seleceted">
+        <object :data="selectedTemplate" type="" id="selectedTemplate" @load="applyTemplate"></object>
+      </div>
     </div>
     <hr />
 
-    <object :data="selectedTemplate" type="" id="selectedTemplate" @load="applyTemplate"></object>
   </div>
 </template>
 
@@ -90,17 +89,25 @@ export default {
       reader.readAsDataURL(file)
     },
     applyTemplate(evt) {
-      console.log(evt)
       const obj = document.getElementById('selectedTemplate').contentDocument
-      this.setImages(obj, '__x003c_LOGOPANEL_x003e_', this.projectLogo)
-      this.setImages(obj, '__x003c_PROJECTIMAGEPANEL_x003e_', this.projectImage)
-      console.log(this.projectImage)
+      if (this.projectLogo && this.projectImage && this.projectName && this.versionDate) {
+        this.setImages(obj, '__x003c_LOGOPANEL_x003e_', this.projectLogo)
+        this.setImages(obj, '__x003c_PROJECTIMAGEPANEL_x003e_', this.projectImage)
+        this.applyText()
+      } else {
+        alert('All fields are required')
+      }
+      // console.log(this.projectImage)
     },
-    importAll(r) {
-      r.keys().forEach((key, index) => (this.templates.push({key: index, pathLong: r(key), pathShort: key })));
+    importAll(path) {
+      path.keys().forEach((key, index) => (this.templates.push({key: index, pathLong: path(key), pathShort: key })));
     },
     clickImage(key) {
-      this.selectedTemplate = key
+      if (this.projectLogo && this.projectImage && this.projectName && this.versionDate){
+        this.selectedTemplate = key
+      } else {
+        alert('All fields are required')
+      }
     },
     setImages(obj, id, src) {
       const parent = obj.getElementById('Layer_x0020_1')
@@ -126,11 +133,26 @@ export default {
       newImg.setAttribute('href', src)
 
       return newImg
-    }
-  },
-  watch: {
-    selectedTemplate(val) {
-      console.log(val)
+    },
+    applyText(obj) {
+      const texts = obj.getElementsByTagName('text')
+      const infoPanel = obj.getElementById('__x003c_PROJECTINFOPANEL_x003e_')
+
+      if (infoPanel) {
+        infoPanel.setAttribute('class', '')
+        infoPanel.setAttribute('fill', 'transparent')
+      }
+
+      for (var key in texts) {
+        if (texts.hasOwnProperty(key)) {
+          if(texts[key].innerHTML.includes('PROJECTNAME')) {
+            texts[key].innerHTML = this.projectName
+          }
+          if(texts[key].innerHTML.includes('VERSIONDATE')) {
+            texts[key].innerHTML = this.versionDate
+          }
+        }
+      }
     }
   },
   mounted() {
@@ -139,20 +161,62 @@ export default {
 }
 </script>
 
-<!-- Add "scoped" attribute to limit CSS to this component only -->
 <style scoped>
-h3 {
-  margin: 40px 0 0;
+
+
+.form-container h1 {
+  margin: 10px 30px;
+  
 }
-ul {
-  list-style-type: none;
-  padding: 0;
+
+.inputs-container {
+  margin: 0 30px;
+  line-height: 2;
+  max-width: 300px;
 }
-li {
-  display: inline-block;
-  margin: 0 10px;
+
+.template-image label {
+  cursor: pointer;
 }
-a {
-  color: #42b983;
+.template-image span {
+  color: silver;
+  font-size: 10px;
+}
+
+.template-image {
+  display: flex;
+  flex-direction: column;
+}
+
+.template-image label:hover {
+  font-weight: 600;
+  color: #5a4dff
+}
+
+.templates {
+  display: grid;
+  grid-template-columns: 1fr 3fr;
+}
+
+.templates__choices {
+  padding: 30px 15px
+}
+
+.templates__choices img {
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.templates__choices img:hover {
+  outline: solid 5px aqua;
+}
+
+.templates__seleceted {
+  width: 100%;
+  padding: 30px
+}
+
+#selectedTemplate {
+  max-width: 100%;
+  max-height: 100%;
 }
 </style>
