@@ -48,7 +48,13 @@
       </div>
       <div class="templates__seleceted">
         <object :data="selectedTemplate" type="" id="selectedTemplate" @load="applyTemplate"></object>
+        <canvas id="canvas"></canvas>
       </div>
+    </div>
+    <div>
+      <button @click="downloadFile">
+        Save File
+      </button>
     </div>
     <hr />
 
@@ -56,6 +62,8 @@
 </template>
 
 <script>
+import { saveAs } from 'file-saver'
+
 export default {
   name: 'DataSetForm',
   data() {
@@ -66,7 +74,9 @@ export default {
       projectImage: '',
       templates: [],
       ojbURL: '',
-      selectedTemplate: ''
+      selectedTemplate: '',
+      svgData: '',
+      imgURI: '',
     }
   },
   methods: {
@@ -77,7 +87,7 @@ export default {
       this.createImage(files[0], e.target.id)
     },
     createImage(file, id) {
-      const image = new Image()
+      // const image = new Image()
       const reader = new FileReader()
       reader.onload = (e) => {
         if (id === 'projectImage') {
@@ -94,10 +104,14 @@ export default {
         this.setImages(obj, '__x003c_LOGOPANEL_x003e_', this.projectLogo)
         this.setImages(obj, '__x003c_PROJECTIMAGEPANEL_x003e_', this.projectImage)
         this.applyText(obj)
+        const svg = obj.getElementsByTagName('svg')[0]
+        const viewBox = svg.getAttribute('viewBox').split(' ')
+        this.svgData = svg
+
+        this.drawToCanvas(viewBox[2], viewBox[3])
       } else {
         alert('All fields are required')
       }
-      // console.log(this.projectImage)
     },
     importAll(path) {
       path.keys().forEach((key, index) => (this.templates.push({key: index, pathLong: path(key), pathShort: key })));
@@ -131,7 +145,6 @@ export default {
       newImg.setAttribute('width', width)
       newImg.setAttribute('height', height)
       newImg.setAttribute('href', src)
-
       return newImg
     },
     applyText(obj) {
@@ -153,16 +166,51 @@ export default {
           }
         }
       }
+    },
+    drawToCanvas(width, height) {
+      var canvas = document.getElementById('canvas');
+      var ctx = canvas.getContext('2d');
+      var data = (new XMLSerializer()).serializeToString(this.svgData);
+      var DOMURL = window.URL || window.webkitURL || window;
+
+      canvas.setAttribute('width', width)
+      canvas.setAttribute('height', height)
+
+      var img = new Image();
+      var svgBlob = new Blob([data], {type: 'image/svg+xml;charset=utf-8'});
+      var url = DOMURL.createObjectURL(svgBlob);
+
+      img.onload = function () {
+        ctx.drawImage(img, 0, 0, width-5, height-5)
+        DOMURL.revokeObjectURL(url)
+
+        var imgURI = canvas
+            .toDataURL('image/png')
+            .replace('image/png', 'image/octet-stream');
+
+        this.imgURI = imgURI
+        // triggerDownload(imgURI);
+      };
+
+      img.src = url;
+    },
+    downloadFile() {
+      var canvas = document.getElementById("canvas");
+      canvas.toBlob(function(blob) {
+          saveAs(blob, "Generated Template.png");
+      }, "image/png");
     }
   },
   mounted() {
     this.importAll(require.context('../assets/templates', true, /\.svg$/));
-},
+  },
 }
 </script>
 
 <style scoped>
-
+button {
+  cursor: pointer;
+}
 
 .form-container h1 {
   margin: 10px 30px;
@@ -218,5 +266,9 @@ export default {
 #selectedTemplate {
   max-width: 100%;
   max-height: 100%;
+}
+
+#canvas {
+  display: none;
 }
 </style>
