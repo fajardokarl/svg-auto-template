@@ -1,72 +1,90 @@
 <template>
   <div class="form-container">
-    <h1>Pro-UP</h1>
-    <hr />
-    <div class="inputs-container">
-      <div>
-        <label for="projectName">Project Name </label>
-        <input type="text" v-model="projectName" id="projectName">
-      </div>
-      <div>
-        <label for="versionDate"> Version Date </label>
-        <input type="date" v-model="versionDate" id="versionDate">
-      </div>
-      <div class="template-image">
-        <label for="projectImage"> Project Image <span>(click to Select)</span></label>
-        <input
-          type="file"
-          accept="image/*"
-          name="projectImage"
-          id="projectImage"
-          style="display: none"
-          @change="onProjectImageUpload"
-        >
-        <img :src="projectImage" width="80px" />
-      </div>
-      <div class="template-image">
-        <label for="projectLogo"> Logo <span>(click to Select)</span></label>
-        <input
-          type="file"
-          accept="image/*"
-          name="projectLogo"
-          id="projectLogo"
-          style="display: none"
-          @change="onProjectImageUpload"
-        >
-        <img :src="projectLogo" width="80px" />
-      </div>
-    </div>
     <div class="templates">
       <div class="templates__choices">
-        <img v-for="image in templates" :key="image.key"
-          name="svg-images"
-          type="image/svg+xml"
-          :src="image.pathLong"
-          width="300px"
-          @click="clickImage(image.pathLong)"
-        />
+        <div v-for="(image, i) in templates" :key="i" class="templates__choice">
+          <div class="templates__controls">
+            <span class="templates__control icon-down" @click="moveDown(i)"></span>
+            <span class="templates__control icon-up" @click="moveUp(i)"></span>
+            <span class="templates__control icon-plus" @click="addTemplate(i)"></span>
+            <span class="templates__control icon-x" @click="removeTemplate(i)"></span>
+          </div>
+          <img 
+            name="svg-images"
+            type="image/svg+xml"
+            :src="image.pathLong"
+            @click="clickImage(image.pathLong)"
+          />
+        </div>
+        <input
+          hidden
+          type="file"
+          accept="image/svg+xml" 
+          id="new-template"
+          @change="onProjectImageUpload">
+        <img src="" alt="" id="tempimg">
       </div>
       <div class="templates__seleceted">
-        <object :data="selectedTemplate" type="" id="selectedTemplate" @load="applyTemplate"></object>
+        <div class="form-actions">
+          <div>
+            <button class="proceed-button btn btn-warning" @click="previousPage">Back</button>
+          </div>
+          <div v-if="selectedTemplate">
+            <button class="btn btn-info" @click="downloadFile">
+              Save as PNG
+            </button>
+            <button class="btn btn-info" @click="downloadFileAsPDF">
+              Save As PDF
+            </button>
+          </div>
+        </div>
+        <!-- <object :data="selectedTemplate" type="" id="selectedTemplate" @load="applyTemplate"></object> -->
+        <div id="selectedTemplate"></div>
         <canvas id="canvas" style="background: #fff;"></canvas>
       </div>
     </div>
-    <div>
-      <button @click="downloadFile">
-        Save as PNG
-      </button>
-      <button @click="downloadFileAsPDF">
-        Save As PDF
-      </button>
+    <div v-show="dragActive" class="templates__live-edit" style="position:absolute; right: 0; top: 0; bottom: 0; width: 280px; min-height: 300px; z-index: 10000; background: #fff; padding: 30px; border: 1px solid #aaa; border-radius: 4px;">
+      <h4> Edit {{ dragActiveLabel }}</h4>
+      <input
+        class="live-edit-text"
+        v-if="dragActive === 'project-name'"
+        type="text"
+        v-model="projectName"
+      >
+      <input
+        v-if="dragActive === 'version-date'"
+        type="date"
+        v-model="versionDate"
+        class="live-edit-text"
+      >
+      <hr />
+      <div class="templates__text-modifiers" v-if="dragActiveType === 'text'">
+        <div class="form-check text-modifier">
+          <input class="form-check-input" type="checkbox" value="" id="is-bold" @change="updateBoldStatus" v-model="isBold">
+          <label class="form-check-label" for="is-bold">
+            Bold
+          </label>
+        </div>
+        <div class="form-check text-modifier">
+          <input class="form-check-input" type="checkbox" value="" id="is-italized" @change="updateItalizedStatus" v-model="isItalized">
+          <label class="form-check-label" for="is-italized">
+            Italized
+          </label>
+        </div>
+      </div>
+      <!-- <button @click=""> </button> -->
     </div>
-    <hr />
-
   </div>
 </template>
 
 <script>
 import { saveAs } from 'file-saver'
 import { jsPDF } from 'jspdf'
+import { mapActions, mapGetters } from 'vuex'
+ 
+import subjx from 'subjx';
+import 'subjx/dist/style/subjx.css';
+
 
 export default {
   name: 'DataSetForm',
@@ -86,64 +104,132 @@ export default {
       canvasHeight: '',
       dragOffsetX: null,
       dragOffsetY: null,
-      dragActive: ''
+      dragActive: '',
+      dragActiveType: null,
+      dragActiveLabel: '',
+      previousDragActive: null,
+      clickedTemplateIndex: null,
+      svgWidthRatio: null,
+      svgHeightRatio: null,
+      origWidth: null,
+      origHeight: null,
+      newRect: null,
+      xElem: null,
+      xDraggables: null,
+      isBold: null,
+      isItalized: null,
+      svgActionType: null,
+      transformMatrix: null
+    }
+  },
+  watch: {
+    dragActive(val) {
+      switch (val) {
+        case 'project-name':
+          this.dragActiveLabel = 'Project Name'
+          this.dragActiveType = 'text'
+          break;
+
+        case 'version-date':
+          this.dragActiveLabel = 'Version Date'
+          this.dragActiveType = 'text'
+          break;
+
+        case '__x003c_PROJECTIMAGEPANEL_x003e_':
+          this.dragActiveLabel = 'Project Image'
+          this.dragActiveType = 'img'
+          break;
+
+        case '__x003c_LOGOPANEL_x003e_':
+          this.dragActiveLabel = 'Logo'
+          this.dragActiveType = 'img'
+          break;
+      }
+    },
+    projectName(val) {
+      this.handleProjectName(val)
+      this.applyText()
+      if (this.dragActive) {
+        this.makeDraggable()
+      }
+    },
+    versionDate(val) {
+      this.handleVersionDate(val)
+      this.applyText()
+      if (this.dragActive) {
+        this.makeDraggable()
+      }
+    },
+    isBold(val) {
+      this.updateBoldStatus(val)
+    },
+    isItalized(val) {
+      this.updateItalizedStatus(val)
     }
   },
   methods: {
-    onProjectImageUpload(e) {
-      const files = e.target.files || e.dataTransfer.files
-      if (!files.length)
-        return
-      this.createImage(files[0], e.target.id)
+    ...mapActions([
+      'handlePage',
+      'handleProjectName',
+      'handleVersionDate',
+      'handleProjectLogo',
+      'handleProjectImage'
+    ]),
+    previousPage() {
+      this.handlePage(1)
     },
-    createImage(file, id) {
-      // const image = new Image()
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        if (id === 'projectImage') {
-          this.projectImage = e.target.result
-        } else {
-          this.projectLogo = e.target.result
-        }
-      }
-      reader.readAsDataURL(file)
-    },
-    applyTemplate(evt) {
-      const obj = document.getElementById('selectedTemplate').contentDocument
-      if (this.projectLogo && this.projectImage && this.projectName && this.versionDate) {
-        this.setImages(obj, '__x003c_LOGOPANEL_x003e_', this.projectLogo)
-        this.setImages(obj, '__x003c_PROJECTIMAGEPANEL_x003e_', this.projectImage)
-        this.applyText(obj)
+    applyTemplate() {
+      this.projectName = this.getProjectName
+      this.versionDate = this.getVersionDate
+      const obj = document.getElementById('selectedTemplate')
+      if (this.getProjectLogo && this.getProjectImage && this.getProjectName && this.getVersionDate) {
         const svg = obj.getElementsByTagName('svg')[0]
-        // svg.getElementsByTagName('rect')[0].remove()
+        this.obj = document.getElementById('selectedTemplate')
         this.svgData = svg
 
+        svg.setAttribute('id', 'svg-container')
+        svg.style.maxWidth = '100%'
+        svg.style.height = '100%'
+
+        this.setImages(svg, '__x003c_PROJECTIMAGEPANEL_x003e_', this.getProjectImage)
+        this.setImages(svg, '__x003c_LOGOPANEL_x003e_', this.getProjectLogo)
+        this.applyText(svg)
+
+        
         const viewBox = svg.getAttribute('viewBox').split(' ')
         this.drawToCanvas(viewBox[2], viewBox[3])
-        this.obj = document.getElementById('selectedTemplate').contentDocument
-
       } else {
         alert('All fields are required')
       }
     },
     importAll(path) {
-      path.keys().forEach((key, index) => (this.templates.push({key: index, pathLong: path(key), pathShort: key })));
+      path.keys().forEach((key, index) => (this.templates.push({pathLong: path(key)})));
     },
-    clickImage(key) {
-      if (this.projectLogo && this.projectImage && this.projectName && this.versionDate){
-        this.selectedTemplate = key
+    clickImage(image) {
+      if (this.getProjectLogo && this.getProjectImage && this.getProjectName && this.getVersionDate){
+        this.selectedTemplate = image
+        const xhr = new XMLHttpRequest();
+        
+        xhr.open("GET",image,false);
+        xhr.overrideMimeType("image/svg+xml");
+        document.getElementById("selectedTemplate").innerHTML = null
+        xhr.onload = function(e) {
+          document.getElementById("selectedTemplate").appendChild(xhr.responseXML.documentElement);
+        }
+        xhr.send("");
 
+        this.applyTemplate()
       } else {
         alert('All fields are required')
       }
     },
-    setImages(obj, id, src) {
+    setImages(obj, id, src) { // for public function
       const parent = obj.getElementById('Layer_x0020_1')
       const img = obj.getElementById(id)
-      const x = img.getAttribute('x') || 0
-      const y = img.getAttribute('y') || 0
-      const width = img.getAttribute('width') || 0
-      const height = img.getAttribute('height') || 0
+      const x = img.getAttribute('x')
+      const y = img.getAttribute('y')
+      const width = img.getAttribute('width')
+      const height = img.getAttribute('height')
 
       img.setAttribute('class', '')
       img.setAttribute('fill', 'transparent')
@@ -153,7 +239,7 @@ export default {
       parent.append(newSVG)
 
     },
-    createSVG(x, y, width, height, src, id,) {
+    createSVG(x, y, width, height, src, id,) { // for public function
       const svgns = "http://www.w3.org/2000/svg";
       const newImg = document.createElementNS(svgns, 'image');
       newImg.setAttribute('x', x)
@@ -162,18 +248,19 @@ export default {
       newImg.setAttribute('height', height)
       newImg.setAttribute('href', src)
       newImg.setAttribute('id', id)
+      newImg.setAttribute('preserveAspectRatio', 'none')
       // Adding events
       
       // newImg.addEventListener('dblclick', this.setDragActive)
       newImg.addEventListener('mousedown', this.drag)
-      newImg.addEventListener('mouseup', this.drop)
+      // newImg.addEventListener('mouseup', this.drop)
       return newImg
     },
-    applyText(obj) {
-      const parent = obj.getElementById('Layer_x0020_1')
+    applyText() { // possible for public function
+      const parent = this.svgData.getElementById('Layer_x0020_1')
       const svgns = "http://www.w3.org/2000/svg";
-      const texts = obj.getElementsByTagName('text')
-      const infoPanel = obj.getElementById('__x003c_PROJECTINFOPANEL_x003e_')
+      const texts = this.svgData.getElementsByTagName('text')
+      const infoPanel = this.svgData.getElementById('__x003c_PROJECTINFOPANEL_x003e_')
 
       if (infoPanel) {
         infoPanel.setAttribute('class', '')
@@ -182,50 +269,74 @@ export default {
 
       for (var key in texts) {
         if (texts.hasOwnProperty(key)) {
-          if(texts[key].innerHTML.includes('PROJECTNAME')) {
+          if(texts[key].innerHTML.includes('PROJECTNAME') || texts[key].id === 'project-name') {
             // texts[key].innerHTML = this.projectName
             const x = texts[key].getAttribute('x')
             const y = texts[key].getAttribute('y')
+            const width = texts[key].getAttribute('width')
             const classList = texts[key].getAttribute('class')
+            const box = texts[key].getBBox()
+            const newX = texts[key].id === 'project-name' ? x : parseFloat(x) + parseFloat(box.width / 2)
             texts[key].remove()
 
             const newText = document.createElementNS(svgns, 'text')
-            newText.setAttribute('x', x)
+            newText.setAttribute('id', 'project-name')
+            newText.setAttribute('x', newX)
             newText.setAttribute('y', y)
+            newText.setAttribute('text-anchor', 'middle')
             newText.setAttribute('class', classList)
-            newText.innerHTML = this.projectName
-            
+            newText.setAttribute('lengthAdjust', 'spacingAndGlyphs')
+            // newText.style.fontWeight = 800
+            // newText.style.cssText = 'font-weight: 800 !important'
+            newText.innerHTML = this.getProjectName
+
+            newText.onmousedown = this.drag
+
             parent.append(newText)
           }
-          if(texts[key].innerHTML.includes('VERSIONDATE')) {
-            // texts[key].innerHTML = this.versionDate
+          if(texts[key].innerHTML.includes('VERSIONDATE') || texts[key].id === 'version-date') {
             const x = texts[key].getAttribute('x')
             const y = texts[key].getAttribute('y')
             const classList = texts[key].getAttribute('class')
+            const box = texts[key].getBBox()
+            const newX = texts[key].id === 'version-date' ? x : parseFloat(x) + parseFloat(box.width / 2)
             texts[key].remove()
             
             const newText = document.createElementNS(svgns, 'text')
-            newText.setAttribute('x', x)
+            // newText.setAttribute('x', x)
+            newText.setAttribute('id', 'version-date')
+            newText.setAttribute('x', newX)
             newText.setAttribute('y', y)
+            newText.setAttribute('text-anchor', 'middle')
             newText.setAttribute('class', classList)
-            newText.innerHTML = this.versionDate
+            newText.setAttribute('lengthAdjust', 'spacingAndGlyphs')
+            newText.innerHTML = this.getVersionDate
+            newText.onmousedown = this.drag
             
             parent.append(newText)
           }
         }
       }
     },
+    saveEditedText() {
+
+    },
     drawToCanvas(width, height) {
       this.svgData.getElementsByTagName('rect')[0].setAttribute('fill', '#fff')
       this.svgData.getElementsByTagName('rect')[0].setAttribute('class', 'str0') // <-- Might Change
-      
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
-      const data = (new XMLSerializer()).serializeToString(this.svgData);
-      const DOMURL = window.URL || window.webkitURL || window;
+      this.deselectEl()
 
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, width, height);
+      const canvas = document.getElementById('canvas')
+      const ctx = canvas.getContext('2d')
+      const data = (new XMLSerializer()).serializeToString(this.svgData)
+      const DOMURL = window.URL || window.webkitURL || window
+      
+      if (this.dragActive) {
+        this.makeDraggable()
+      }
+
+      ctx.fillStyle = "white"
+      ctx.fillRect(0, 0, width, height)
 
       this.canvasWidth = width
       this.canvasHeight = height
@@ -234,8 +345,8 @@ export default {
       canvas.setAttribute('height', height)
 
       const img = new Image();
-      const svgBlob = new Blob([data], {type: 'image/svg+xml;charset=utf-8'});
-      const url = DOMURL.createObjectURL(svgBlob);
+      const svgBlob = new Blob([data], {type: 'image/svg+xml;charset=utf-8'})
+      const url = DOMURL.createObjectURL(svgBlob)
 
       img.onload = function () {
         ctx.drawImage(img, 0, 0, width-5, height-5)
@@ -246,9 +357,9 @@ export default {
             .replace('image/jpeg', 'image/octet-stream');
 
         this.imgURI = imgURI
-      };
+      }
 
-      img.src = url;
+      img.src = url
     },
     downloadFile() {
       const canvas = document.getElementById("canvas");
@@ -270,42 +381,217 @@ export default {
       pdf.save('Generated Template.pdf')
     },
     drag({offsetX, offsetY, target, detail}) {
-      if (detail == 2) {
-        this.dragActive = target.id
-      }
-      if (this.dragActive) {
-        this.dragOffsetY = offsetY - this.obj.getElementById(this.dragActive).y.baseVal.value
-        this.dragOffsetX = offsetX - this.obj.getElementById(this.dragActive).x.baseVal.value
-  
-        this.obj.getElementsByTagName('svg')[0].addEventListener('mousemove', this.move)
-      }
-
-      // this.dragOffsetX = offsetX - this.square.x;
-      // this.dragOffsetY = offsetY - this.square.y;\
-      // this.dragOffsetX = offsetX - target.x.baseVal.value
-      // this.dragOffsetY = offsetY - target.y.baseVal.value
-    },
-    drop() {
-      this.dragOffsetX = this.dragOffsetY = this.dragActive = null;
-      this.obj.getElementsByTagName('svg')[0].removeEventListener('mousemove', this.move)
-
-      // const viewBox = this.svgData.getAttribute('viewBox').split(' ')
-      // this.drawToCanvas(viewBox[2], viewBox[3])
-
-    },
-    move({offsetX, offsetY, target}) {
-      let x = offsetX - this.dragOffsetX
-      let y = offsetY - this.dragOffsetY
+      this.dragActive = target.id
+      this.makeDraggable()
       
-      this.obj.getElementById(this.dragActive).x.baseVal.value = x
-      this.obj.getElementById(this.dragActive).y.baseVal.value = y
+      const textFontWeight = target.style.fontWeight
+      const textFontStyle = target.style.fontStyle
+      
+      this.isBold = textFontWeight === 'bold' ? true : false
+      this.isItalized = textFontStyle === 'italic' ? true : false
+    },
+    makeDraggable(){
+      const self = this
 
-      // this.square.x = offsetX - this.dragOffsetX;
-      // this.square.y = offsetY - this.dragOffsetY;
-    }
+      this.deselectEl()
+      const methods = {
+        onInit(el) {
+        },
+        onMove() {
+          self.svgActionType = 'move'
+        },
+        onResize({clientX, clientY, dx, dy, width, height}) {
+          self.svgActionType = 'resize'
+
+          if(self.dragActiveType === 'text') {
+            // self.transformMatrix = document.getElementById(self.dragActive).getAttribute('transform')
+            // console.log(document.getElementById(self.dragActive).getAttribute('transform'))
+            // document.getElementById(self.dragActive).setAttribute('textLength', width)
+            // document.getElementById(self.dragActive).setAttribute('text-anchor', 'right')
+          }
+        },
+        onRotate(rad) {
+        },
+        onDrop(e, el) {
+          // if(self.dragActiveType === 'text' && self.svgActionType === 'resize') {
+          //   document.getElementById(self.dragActive).setAttribute('transform', self.transformMatrix)
+          // }
+
+          const viewBox = self.svgData.getAttribute('viewBox').split(' ')
+          self.drawToCanvas(viewBox[2], viewBox[3])
+        },
+        onDestroy(el) {
+        }
+      }
+      const svgOptions = {
+        container: '#svg-container',
+        proportions: true,
+        each: {
+          resize: true,
+          rotate: false,
+        },
+        ...methods
+      }
+
+      this.xElem = subjx(`#${this.dragActive}`)
+      this.xDraggables = this.xElem.drag(svgOptions)
+
+      const { handles } = this.xDraggables[0].storage
+      this.changeHandleStyles(handles)
+      Object.entries(handles).forEach(c => {
+        if(c[1]?.localName === 'circle' && c[0] !== 'center') {
+          c[1].setAttribute('r', '20')
+        }
+      })
+      
+      handles.tr.onmousedown = 
+      handles.tl.onmousedown = 
+      handles.br.onmousedown = 
+      handles.bl.onmousedown = function() {
+         self.xDraggables[0]._processOptions({
+            container: '#svg-container',
+            proportions: true,
+            each: {
+              resize: true,
+              rotate: false,
+            },
+            ...methods
+          })
+      }
+
+      handles.tc.onmousedown = 
+      handles.bc.onmousedown = 
+      handles.ml.onmousedown = 
+      handles.mr.onmousedown = function() {
+         self.xDraggables[0]._processOptions({
+            container: '#svg-container',
+            proportions: false,
+            each: {
+              resize: true,
+              rotate: false,
+            },
+            ...methods
+          })
+      }
+
+      var specifiedElement = document.getElementById('selectedTemplate');
+
+      document.addEventListener('mousedown', function(event) {
+        var isClickInside = specifiedElement.contains(event.target)
+
+        if (!isClickInside && event.target.className !== 'live-edit-text' && !event.target.parentElement?.className.includes('text-modifier')) {
+          self.dragActive = null
+          self.deselectEl()
+        }
+      });
+    },
+    deselectEl() {
+      if (this.xDraggables) {
+        this.xDraggables.forEach(item => {
+            item.disable()
+        })
+      }
+
+    },
+    changeHandleStyles(handles) {
+      handles.tl.onmousedown = 
+      handles.br.onmousedown = 
+      handles.tl.onmouseover = 
+      handles.br.onmouseover = function() {
+        handles.tl.style.cursor = handles.br.style.cursor = 'nwse-resize'
+      }
+
+      handles.tr.onmousedown = 
+      handles.bl.onmousedown = 
+      handles.tr.onmouseover = 
+      handles.bl.onmouseover = function() {
+        handles.tr.style.cursor = handles.bl.style.cursor = 'nesw-resize'
+      }
+
+      handles.mr.onmousedown = 
+      handles.ml.onmousedown = 
+      handles.mr.onmouseover = 
+      handles.ml.onmouseover = function() {
+        handles.mr.style.cursor = handles.ml.style.cursor = 'ew-resize'
+      }
+
+      handles.tc.onmousedown = 
+      handles.bc.onmousedown = 
+      handles.tc.onmouseover = 
+      handles.bc.onmouseover = function() {
+        handles.tc.style.cursor = handles.bc.style.cursor = 'ns-resize'
+      }
+    },
+    moveDown(key) {
+      if (key + 1 < this.templates.length ) {
+        const temp = this.templates[key + 1]
+        this.$set(this.templates, key + 1, this.templates[key])
+        this.$set(this.templates, key , temp)
+      } else {
+        alert('Last item')
+      }
+    },
+    moveUp(key) {
+      if (key !== 0 ) {
+        const temp = this.templates[key - 1]
+        this.$set(this.templates, key - 1, this.templates[key])
+        this.$set(this.templates, key , temp)
+      } else {
+        alert('Top Item')
+      }
+    },
+    removeTemplate(key) {
+      this.templates.splice(key, 1)
+    },
+    addTemplate(key) {
+      document.querySelector('#new-template').click()
+      this.clickedTemplateIndex = key
+    },
+    onProjectImageUpload({target, dataTransfer}) {
+      const files = target.files || dataTransfer.files
+      if (!files.length)
+        return
+      this.createImage(files[0], target.id)
+    },
+    createImage(file, id) {
+      // const image = new Image()
+      const reader = new FileReader()
+      reader.onload = ({target}) => {
+        // const a = document.querySelector('#new-template').value
+        const newTemplate = {
+          pathLong: target.result
+        }
+        this.templates.splice(this.clickedTemplateIndex + 1, 0, newTemplate)
+      }
+      reader.readAsDataURL(file)
+    },
+    updateBoldStatus(isBold) {
+      if (isBold) {
+        document.getElementById(this.dragActive).style.fontWeight = 'bold'
+      } else {
+        document.getElementById(this.dragActive).style.fontWeight = 'normal'
+      }
+    },
+    updateItalizedStatus(isItalized) {
+      if (isItalized) {
+        document.getElementById(this.dragActive).style.fontStyle = 'italic'
+      } else {
+        document.getElementById(this.dragActive).style.fontStyle = 'normal'
+      }
+    },
+  },
+  computed: {
+    ...mapGetters([
+      'getProjectName',
+      'getVersionDate',
+      'getProjectLogo',
+      'getProjectImage',
+      'getPage'
+    ])
   },
   mounted() {
     this.importAll(require.context('../assets/templates', true, /\.svg$/));
+    
   },
 }
 </script>
@@ -315,20 +601,51 @@ button {
   cursor: pointer;
 }
 
-.form-container h1 {
-  margin: 10px 30px;
-  
+.form-container {
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  grid-auto-rows: 1fr auto;
 }
 
 .inputs-container {
   margin: 0 30px;
   line-height: 2;
-  max-width: 300px;
+  max-width: 350px;
+}
+
+.input-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.input-group input {
+  width: calc(100% - 100px);
+}
+
+.input-group label {
+  white-space: nowrap;
+}
+
+.form-actions {
+  justify-content: space-between;
+  align-items: flex-end;
+  display: flex;
+  padding-bottom: 20px;
+  min-height: 50px;
+}
+
+.form-actions button {
+  margin: 5px; 
 }
 
 .template-image label {
   cursor: pointer;
+  margin: 10px 10px 10px 0
 }
+
 .template-image span {
   color: silver;
   font-size: 10px;
@@ -336,7 +653,7 @@ button {
 
 .template-image {
   display: flex;
-  flex-direction: column;
+  position: relative;
 }
 
 .template-image label:hover {
@@ -344,26 +661,73 @@ button {
   color: #5a4dff
 }
 
+.template-image img {
+  position: absolute;
+  right: 20px;
+}
+
 .templates {
   display: grid;
-  grid-template-columns: 1fr 3fr;
+  grid-template-columns: minmax(250px, 1fr) 3fr;
+  grid-column: 1 / 3;
+  /* border-top: 1px solid #ccc; */
 }
 
 .templates__choices {
-  padding: 30px 15px
+  padding: 30px 15px;
+  height: calc(100vh - 75px); /* 200px might change */
+  overflow-y: scroll;
 }
 
 .templates__choices img {
   margin-bottom: 10px;
   cursor: pointer;
+  contain: content;
+  max-width: 100%;
+  max-height: 100%;
 }
+
+.templates__choice {
+  margin-bottom: 10px;
+}
+
+.templates__controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 5px;
+}
+
+.templates__control {
+  width: 14px;
+  height: 14px;
+  margin: 1px;
+  display: inline-block;
+}
+
 .templates__choices img:hover {
   outline: solid 5px aqua;
 }
 
 .templates__seleceted {
   width: 100%;
-  padding: 30px
+  padding: 10px
+}
+
+.templates__live-edit {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 280px;
+  min-height: 300px;
+  z-index: 10000;
+  background: #fff;
+  padding: 30px;
+  border: 1px solid #aaa;
+  border-radius: 4px;
+  
 }
 
 #selectedTemplate {
@@ -377,5 +741,17 @@ button {
 
 .fill-white {
   fill: #fff;
+}
+
+.selectedEl {
+  border: 2px solid royalblue;
+}
+
+.text-bold {
+  font-weight: bold;
+}
+
+.text-italic {
+  font-weight: bold;
 }
 </style>
